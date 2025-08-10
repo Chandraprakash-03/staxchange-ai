@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { ZipFile } from "https://deno.land/x/zipjs@v2.7.52/index.deno.ts";
+import JSZip from "https://esm.sh/jszip@3.10.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,16 +13,15 @@ serve(async (req) => {
     const { files } = await req.json();
     if (!Array.isArray(files)) throw new Error("No files provided");
 
-    const zip = new ZipFile();
+    const zip = new JSZip();
     for (const f of files as { path: string; content: string }[]) {
       const path = (f.path || "file.txt").replace(/^\/+/, "");
-      const data = new TextEncoder().encode(f.content || "");
-      await zip.addBlob(path, new Blob([data], { type: "text/plain" }));
+      zip.file(path, f.content || "");
     }
-    const blob = await zip.generate({ type: "blob" });
-    const arrayBuffer = await blob.arrayBuffer();
 
-    return new Response(new Uint8Array(arrayBuffer), {
+    const uint8 = await zip.generateAsync({ type: "uint8array" });
+
+    return new Response(uint8, {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/zip",
