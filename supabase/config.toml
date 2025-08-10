@@ -1,19 +1,1 @@
 project_id = "siindibbfajlgqhkzumw"
-
-[functions.github-auth-start]
-verify_jwt = false
-
-[functions.github-oauth-callback]
-verify_jwt = false
-
-[functions.github-repos]
-verify_jwt = false
-
-[functions.convert]
-verify_jwt = false
-
-[functions.export-github]
-verify_jwt = false
-
-[functions.export-zip]
-verify_jwt = false

@@ -38,18 +38,6 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    /* Extended design tokens */
-    --primary-glow: 222.2 100% 60%;
-    --accent-strong: 268 85% 60%;
-
-    /* Gradients & shadows */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 100%);
-    --shadow-elegant: 0 12px 30px -12px hsl(var(--primary) / 0.25);
-    --shadow-glow: 0 10px 40px hsl(var(--primary-glow) / 0.35);
-
-    /* Motion */
-    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-
     --sidebar-background: 0 0% 98%;
 
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -95,10 +83,6 @@ All colors MUST be HSL.
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
-
-    --primary-glow: 212.7 90% 70%;
-    --gradient-primary: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(var(--primary-glow)) 100%);
-
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
