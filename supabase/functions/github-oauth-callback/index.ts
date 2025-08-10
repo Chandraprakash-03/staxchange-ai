@@ -32,6 +32,7 @@ serve(async (req) => {
 
     const returnTo = state?.return_to || "/";
     const redirect = `${returnTo}#github_token=${encodeURIComponent(tokenJson.access_token)}`;
+    console.log('github-oauth-callback redirect', { request_origin: url.origin, request_pathname: url.pathname, return_to: returnTo, final_redirect: redirect });
     return Response.redirect(redirect, 302);
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });

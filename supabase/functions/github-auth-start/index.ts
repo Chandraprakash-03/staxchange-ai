@@ -28,6 +28,7 @@ serve(async (req) => {
     ghUrl.searchParams.set("scope", "repo");
     ghUrl.searchParams.set("state", state);
 
+    console.log('github-auth-start redirect', { request_origin: url.origin, request_hostname: url.hostname, redirect_uri: redirectUri, gh_url: ghUrl.toString() });
     return Response.redirect(ghUrl.toString(), 302);
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
