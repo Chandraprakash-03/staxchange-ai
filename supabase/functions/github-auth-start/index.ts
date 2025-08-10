@@ -16,7 +16,7 @@ serve(async (req) => {
 
     const returnTo = url.searchParams.get("return_to") ?? "";
 
-    const redirectUri = `${url.origin.replace(/\/github-auth-start$/, "")}/github-oauth-callback`;
+    const redirectUri = `${url.origin}/functions/v1/github-oauth-callback`;
     const state = btoa(JSON.stringify({ return_to: returnTo }));
 
     const ghUrl = new URL("https://github.com/login/oauth/authorize");

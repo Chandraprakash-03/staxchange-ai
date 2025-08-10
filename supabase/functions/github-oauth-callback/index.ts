@@ -24,7 +24,7 @@ serve(async (req) => {
     const tokenResp = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: `${url.origin}/github-oauth-callback` }),
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: `${url.origin}/functions/v1/github-oauth-callback` }),
     });
 
     const tokenJson = await tokenResp.json();
