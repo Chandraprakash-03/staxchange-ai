@@ -10,6 +10,8 @@ dotenv.config();
 const githubRoutes = require('./routes/github');
 const convertRoutes = require('./routes/convert');
 const authRoutes = require('./routes/auth');
+const downloadRoutes = require('./routes/download');        // New route
+const githubCreateRoutes = require('./routes/github-create'); // New route
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,10 +22,8 @@ app.set('trust proxy', 1);
 // Enhanced CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Allow localhost and common development origins
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
@@ -33,7 +33,6 @@ app.use(cors({
       'http://127.0.0.1:5173'
     ];
     
-    // Add your production domain here
     if (process.env.FRONTEND_URL) {
       allowedOrigins.push(process.env.FRONTEND_URL);
     }
@@ -74,7 +73,6 @@ app.use(express.urlencoded({
 
 // Request timeout middleware
 app.use((req, res, next) => {
-  // Set timeout to 10 minutes for all requests
   req.setTimeout(10 * 60 * 1000, () => {
     res.status(408).json({ 
       error: 'Request timeout',
@@ -106,6 +104,8 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/api/github', githubRoutes);
 app.use('/api/convert', convertRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/download', downloadRoutes);           // New ZIP download route
+app.use('/api/github-create', githubCreateRoutes);  // New GitHub repo creation route
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -128,7 +128,9 @@ app.get('/', (req, res) => {
       health: '/health',
       github: '/api/github',
       convert: '/api/convert',
-      auth: '/api/auth'
+      auth: '/api/auth',
+      download: '/api/download',
+      'github-create': '/api/github-create'
     },
     docs: 'https://github.com/your-repo/staxchange-api'
   });
@@ -153,7 +155,6 @@ app.use((err, req, res, next) => {
     timestamp: new Date().toISOString()
   });
 
-  // Don't leak error details in production
   const isDevelopment = process.env.NODE_ENV === 'development';
   
   res.status(err.status || 500).json({
@@ -177,7 +178,6 @@ process.on('SIGINT', () => {
 // Unhandled promise rejection handling
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit the process in production
   if (process.env.NODE_ENV !== 'production') {
     process.exit(1);
   }
@@ -192,6 +192,13 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 🔗 Health check: http://localhost:${PORT}/health
 📝 API Documentation: http://localhost:${PORT}/
 ⏰ Started at: ${new Date().toISOString()}
+
+📋 Available Endpoints:
+   • GitHub API: /api/github
+   • Convert Code: /api/convert  
+   • Authentication: /api/auth
+   • Download ZIP: /api/download
+   • Create Repository: /api/github-create
   `);
 });
 

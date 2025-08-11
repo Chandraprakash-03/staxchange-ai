@@ -181,7 +181,7 @@ const Index = () => {
     
     try {
       // Note: You'll need to implement this endpoint in your Node.js server
-      const response = await fetch(`${API_BASE}/api/github/export`, {
+      const response = await fetch(`${API_BASE}/api/github-create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,7 +214,7 @@ const Index = () => {
     if (!converted?.length) return;
     
     try {
-      const response = await fetch(`${API_BASE}/api/export/zip`, {
+      const response = await fetch(`${API_BASE}/api/download`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json" 
@@ -351,6 +351,7 @@ const Index = () => {
                 <Select value={targetDb} onValueChange={setTargetDb}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
                     <SelectItem value="postgresql">PostgreSQL</SelectItem>
                     <SelectItem value="mysql">MySQL</SelectItem>
                   </SelectContent>
