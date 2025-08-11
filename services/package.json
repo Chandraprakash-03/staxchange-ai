@@ -1,0 +1,35 @@
+{
+  "name": "staxchange-nodejs-server",
+  "version": "1.0.0",
+  "description": "Node.js server for code conversion with GitHub integration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "dev:watch": "nodemon --watch . --ext js,json index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"No linting configured\" && exit 0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "fs": "^0.0.1-security",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "nodejs",
+    "express",
+    "github",
+    "code-conversion",
+    "api"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
