@@ -332,6 +332,7 @@ const Index = () => {
                     <SelectItem value="csharp">C#</SelectItem>
                     <SelectItem value="typescript">TypeScript</SelectItem>
                     <SelectItem value="python">Python</SelectItem>
+                    <SelectItem value="java">Java</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -343,6 +344,8 @@ const Index = () => {
                     <SelectItem value="angular">Angular</SelectItem>
                     <SelectItem value="react">React</SelectItem>
                     <SelectItem value="dotnet-webapi">.NET Web API</SelectItem>
+                    <SelectItem value="core java">Java Core</SelectItem>
+                    <SelectItem value="java spring">Java Spring</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

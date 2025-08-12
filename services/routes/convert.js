@@ -21,8 +21,57 @@ async function gh(token, path) {
   return resp.json();
 }
 
-function isCodeFile(path) {
-  return /\.(ts|tsx|js|jsx|py|cs|java|go|rs|php|rb|kt|scala|sql|sh|yml|yaml|json|html|css|scss|less)$/i.test(path);
+// Improved file detection - includes more file types
+function isRelevantFile(path) {
+  // Skip common ignored directories and files
+  const skipPatterns = [
+    /node_modules\//,
+    /\.git\//,
+    /\.DS_Store$/,
+    /\.log$/,
+    /\.cache\//,
+    /dist\//,
+    /build\//,
+    /coverage\//,
+    /\.nyc_output\//,
+    /\.vscode\//,
+    /\.idea\//
+  ];
+  
+  if (skipPatterns.some(pattern => pattern.test(path))) {
+    return false;
+  }
+
+  // Include code files, config files, documentation, etc.
+  const relevantExtensions = /\.(ts|tsx|js|jsx|py|cs|java|go|rs|php|rb|kt|scala|sql|sh|yml|yaml|json|html|css|scss|less|md|txt|env|gitignore|toml|xml|properties|conf|ini|dockerfile|makefile|gradle|maven|pom|package|lock|requirements|gemfile|cargo|composer)$/i;
+  
+  // Also include files without extensions that are commonly important
+  const importantFiles = /^(dockerfile|makefile|rakefile|gulpfile|gruntfile|webpack\.config|rollup\.config|vite\.config|tsconfig|jsconfig|babel\.config|eslint|prettier|package|requirements|gemfile|cargo|composer)$/i;
+  
+  const filename = path.split('/').pop() || '';
+  
+  return relevantExtensions.test(path) || importantFiles.test(filename);
+}
+
+// Get file priority for processing order
+function getFilePriority(path) {
+  const filename = path.toLowerCase();
+  
+  // High priority - core config files
+  if (filename.includes('package.json') || filename.includes('requirements.txt') || 
+      filename.includes('gemfile') || filename.includes('cargo.toml') ||
+      filename.includes('pom.xml') || filename.includes('composer.json')) {
+    return 1;
+  }
+  
+  // Medium priority - main application files
+  if (filename.includes('main') || filename.includes('index') || 
+      filename.includes('app.') || filename.includes('server.')) {
+    return 2;
+  }
+  
+  // Normal priority
+  return 3;
 }
 
 async function fetchFiles(token, owner, repo, branch) {
@@ -36,22 +85,48 @@ async function fetchFiles(token, owner, repo, branch) {
   }
   
   const tree = await gh(token, `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
-  const files = (tree.tree || [])
-    .filter((n) => n.type === "blob" && isCodeFile(n.path))
-    .slice(0, 50); // Reduced limit for better processing
+  const allFiles = (tree.tree || [])
+    .filter((n) => n.type === "blob" && isRelevantFile(n.path));
   
-  console.log(`Found ${files.length} code files to process`);
+  // Sort by priority and then alphabetically
+  const sortedFiles = allFiles.sort((a, b) => {
+    const priorityA = getFilePriority(a.path);
+    const priorityB = getFilePriority(b.path);
+    
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+    
+    return a.path.localeCompare(b.path);
+  });
+  
+  // Increased limit but still reasonable
+  const filesToProcess = sortedFiles.slice(0, 200);
+  
+  console.log(`Found ${allFiles.length} relevant files, processing top ${filesToProcess.length}`);
   
   const results = [];
-  const batchSize = 5; // Smaller batches for better reliability
+  const batchSize = 10; // Increased batch size for efficiency
   
-  for (let i = 0; i < files.length; i += batchSize) {
-    const batch = files.slice(i, i + batchSize);
+  for (let i = 0; i < filesToProcess.length; i += batchSize) {
+    const batch = filesToProcess.slice(i, i + batchSize);
     const batchPromises = batch.map(async (f) => {
       try {
         const contentResp = await gh(token, `/repos/${owner}/${repo}/contents/${encodeURIComponent(f.path)}?ref=${encodeURIComponent(branch)}`);
         const decoded = Buffer.from(contentResp.content, 'base64').toString('utf-8');
-        return { path: f.path, content: decoded };
+        
+        // Skip very large files (>100KB) to avoid API issues
+        if (decoded.length > 100000) {
+          console.warn(`Skipping large file: ${f.path} (${decoded.length} chars)`);
+          return null;
+        }
+        
+        return { 
+          path: f.path, 
+          content: decoded,
+          size: decoded.length,
+          priority: getFilePriority(f.path)
+        };
       } catch (error) {
         console.error(`Error fetching ${f.path}:`, error.message);
         return null;
@@ -62,8 +137,8 @@ async function fetchFiles(token, owner, repo, branch) {
     results.push(...batchResults.filter(Boolean));
     
     // Small delay between batches to respect rate limits
-    if (i + batchSize < files.length) {
-      await new Promise(resolve => setTimeout(resolve, 200));
+    if (i + batchSize < filesToProcess.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
   
@@ -71,50 +146,64 @@ async function fetchFiles(token, owner, repo, branch) {
   return results;
 }
 
-async function convertBatch(batch, target) {
+async function convertBatch(batch, target, batchIndex) {
   if (!OPENROUTER_KEY) {
     throw new Error("Missing OPENROUTER_API_KEY environment variable");
   }
 
-  // Enhanced system prompt with clearer instructions
-  const sys = `You are a senior software engineer specializing in cross-platform code conversion. 
+  // Enhanced system prompt
+  const sys = `You are a senior software engineer specializing in complete application migration and conversion.
 
-TASK: Convert the provided source code files to the specified target technology stack.
+CRITICAL TASK: Convert ALL provided files from the source codebase to the target technology stack. This is a complete application migration - every file must be converted or have an equivalent in the target stack.
 
 TARGET STACK:
 - Language: ${target.language}
 - Framework: ${target.framework} 
 - Database: ${target.database}
 
-CONVERSION RULES:
-1. Convert ALL code to the target language (${target.language})
-2. Use the target framework (${target.framework}) patterns and conventions
-3. Adapt database queries/models for ${target.database}
-4. Preserve the original functionality and business logic
-5. Update file extensions to match the target language
-6. Follow the target language's naming conventions and best practices
-7. Include necessary imports/dependencies for the target stack
+CONVERSION REQUIREMENTS:
+1. Convert EVERY source file to its equivalent in ${target.language}
+2. Maintain the same directory structure when possible
+3. Update ALL file extensions to match ${target.language} conventions
+4. Convert ALL imports, dependencies, and package references
+5. Adapt ALL database queries/models for ${target.database}
+6. Preserve ALL functionality and business logic
+7. Follow ${target.framework} patterns and best practices
+8. Include necessary configuration files for the target stack
 
-CRITICAL: You MUST return ONLY a valid JSON object with this exact structure:
+IMPORTANT FILE TYPES TO HANDLE:
+- Source code files: Convert language syntax completely
+- Config files (package.json, requirements.txt, etc.): Create equivalent for target stack
+- Database files: Convert to ${target.database} syntax
+- Documentation: Update with new stack information
+- Environment files: Maintain but update variable names if needed
+- Build files: Create equivalent build configuration
+
+OUTPUT FORMAT - Return ONLY this JSON structure:
 {
   "files": [
     {
-      "path": "converted/file/path.ext",
-      "content": "converted code content here"
+      "path": "new/file/path.ext",
+      "content": "complete converted file content",
+      "originalPath": "original/file/path"
     }
   ]
 }
 
-Do not include any explanations, markdown formatting, or text outside the JSON object.`;
+Do not include any explanations, markdown, or text outside the JSON.`;
 
-  // Create file content for the AI to process
+  // Create detailed file content with metadata
   const fileContents = batch.map((file, index) => 
-    `=== FILE ${index + 1}: ${file.path} ===\n${file.content}\n`
+    `=== FILE ${index + 1}: ${file.path} (${file.size} chars, priority: ${file.priority}) ===\n${file.content}\n`
   ).join('\n\n');
 
-  const userMessage = `Convert these ${batch.length} files to ${target.language} with ${target.framework} framework and ${target.database} database:\n\n${fileContents}`;
+  const userMessage = `BATCH ${batchIndex}: Convert these ${batch.length} files to ${target.language}/${target.framework}/${target.database}. 
 
-  console.log(`Converting batch of ${batch.length} files to ${target.language}/${target.framework}`);
+ENSURE COMPLETE CONVERSION - do not skip any files:
+
+${fileContents}`;
+
+  console.log(`Converting batch ${batchIndex} of ${batch.length} files to ${target.language}/${target.framework}`);
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -126,13 +215,12 @@ Do not include any explanations, markdown formatting, or text outside the JSON o
         "X-Title": "StaxChange AI Converter",
       },
       body: JSON.stringify({
-        model: "z-ai/glm-4.5-air:free",
+        model: "z-ai/glm-4.5-air:free", // More capable model for complex conversions
         messages: [
           { role: "system", content: sys },
           { role: "user", content: userMessage }
         ],
-        // temperature: 0.1, // Lower temperature for more consistent output
-        // max_tokens: 8000,  // Increased token limit
+
       }),
     });
 
@@ -145,56 +233,117 @@ Do not include any explanations, markdown formatting, or text outside the JSON o
     const data = await resp.json();
     const aiResponse = data?.choices?.[0]?.message?.content || "";
     
-    console.log('AI Response preview:', aiResponse.substring(0, 200) + '...');
+    console.log(`AI Response for batch ${batchIndex} - length: ${aiResponse.length}`);
     
-    // Try to extract JSON from the response
+    // Parse JSON response
     let parsed;
     try {
-      // First try to parse the entire response as JSON
       parsed = JSON.parse(aiResponse);
     } catch (e) {
-      // If that fails, try to extract JSON from the response
+      // Try to extract JSON from response
       const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           parsed = JSON.parse(jsonMatch[0]);
         } catch (e2) {
-          console.error('Failed to parse extracted JSON:', e2);
-          throw new Error('AI returned invalid JSON format');
+          throw new Error(`Failed to parse AI response as JSON: ${e2.message}`);
         }
       } else {
-        console.error('No JSON found in AI response');
-        throw new Error('AI did not return JSON format');
+        throw new Error('AI response does not contain valid JSON');
       }
     }
     
-    // Validate the response structure
+    // Validate response structure
     if (!parsed || !Array.isArray(parsed.files)) {
-      console.error('Invalid response structure:', parsed);
-      throw new Error('AI returned invalid response structure');
+      throw new Error('AI response missing files array');
     }
     
-    // Validate each file in the response
+    // Validate and clean file entries
     const validFiles = parsed.files.filter(file => {
       if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') {
-        console.warn('Skipping invalid file entry:', file);
+        console.warn(`Batch ${batchIndex}: Skipping invalid file entry:`, file?.path || 'unknown');
         return false;
       }
       return true;
     });
     
     if (validFiles.length === 0) {
-      throw new Error('No valid converted files in AI response');
+      throw new Error(`Batch ${batchIndex}: No valid files in AI response`);
     }
     
-    console.log(`Successfully converted ${validFiles.length} files`);
+    // Check if we got files for all input files
+    const inputFileCount = batch.length;
+    const outputFileCount = validFiles.length;
+    
+    if (outputFileCount < inputFileCount) {
+      console.warn(`Batch ${batchIndex}: Input files: ${inputFileCount}, Output files: ${outputFileCount} - some files may be missing`);
+    }
+    
+    console.log(`Batch ${batchIndex}: Successfully converted ${validFiles.length} files`);
     return validFiles;
     
   } catch (error) {
-    console.error('Conversion error:', error.message);
-    // Instead of returning originals, throw the error to be handled upstream
-    throw new Error(`Failed to convert files: ${error.message}`);
+    console.error(`Batch ${batchIndex} conversion error:`, error.message);
+    throw error;
   }
+}
+
+// Fallback conversion for failed batches - creates stub files to maintain structure
+function createFallbackFiles(batch, target) {
+  console.log(`Creating fallback files for ${batch.length} files`);
+  
+  return batch.map(file => {
+    // Determine target file extension
+    let targetExt = '';
+    switch (target.language.toLowerCase()) {
+      case 'python':
+        targetExt = '.py';
+        break;
+      case 'javascript':
+      case 'node.js':
+        targetExt = '.js';
+        break;
+      case 'typescript':
+        targetExt = '.ts';
+        break;
+      case 'java':
+        targetExt = '.java';
+        break;
+      case 'c#':
+      case 'csharp':
+        targetExt = '.cs';
+        break;
+      case 'go':
+        targetExt = '.go';
+        break;
+      default:
+        targetExt = '.txt';
+    }
+    
+    // Convert path
+    const pathParts = file.path.split('.');
+    const newPath = pathParts.slice(0, -1).join('.') + targetExt;
+    
+    // Create basic converted content
+    const fallbackContent = `// FALLBACK CONVERSION - NEEDS MANUAL REVIEW
+// Original file: ${file.path}
+// Target: ${target.language} with ${target.framework}
+// TODO: Convert the following original content to ${target.language}
+
+/*
+Original content:
+${file.content.substring(0, 1000)}${file.content.length > 1000 ? '\n... (truncated)' : ''}
+*/
+
+// Add your converted ${target.language} code here`;
+
+    return {
+      path: newPath,
+      content: fallbackContent,
+      originalPath: file.path,
+      isFallback: true
+    };
+  });
 }
 
 // Convert repository endpoint
@@ -202,7 +351,7 @@ router.post('/', async (req, res) => {
   try {
     const { token, owner, repo, branch, target } = req.body;
     
-    // Validate required fields
+    // Validation
     if (!token || !owner || !repo || !branch) {
       return res.status(400).json({ 
         error: "Missing required fields: token, owner, repo, branch" 
@@ -211,104 +360,120 @@ router.post('/', async (req, res) => {
 
     if (!target || !target.language || !target.framework || !target.database) {
       return res.status(400).json({ 
-        error: "Missing or incomplete target specification (language, framework, database required)" 
+        error: "Missing target specification (language, framework, database required)" 
       });
     }
 
-    console.log(`Starting conversion for ${owner}/${repo}:${branch} to ${target.language}/${target.framework}/${target.database}`);
+    console.log(`Starting conversion: ${owner}/${repo}:${branch} → ${target.language}/${target.framework}/${target.database}`);
     
-    // Fetch all files
+    // Fetch all relevant files
     const originals = await fetchFiles(token, owner, repo, branch);
     
     if (originals.length === 0) {
       return res.json({ 
         files: [], 
-        message: "No code files found in repository" 
+        message: "No relevant files found in repository" 
       });
     }
 
-    // Create smaller batches for better conversion reliability
+    // Create intelligent batches based on content size and file relationships
     const batches = [];
-    const sizeLimit = 40000; // Reduced size limit
+    const sizeLimit = 80000; // Increased size limit
     let currentBatch = [];
     let currentSize = 0;
 
-    for (const file of originals) {
-      const fileSize = file.content.length;
-      
-      // If adding this file would exceed the limit and we have files in current batch
-      if (currentSize + fileSize > sizeLimit && currentBatch.length > 0) {
-        batches.push(currentBatch);
-        currentBatch = [];
-        currentSize = 0;
+    // Group related files together when possible
+    const fileGroups = {
+      config: originals.filter(f => f.priority === 1),
+      main: originals.filter(f => f.priority === 2),
+      others: originals.filter(f => f.priority === 3)
+    };
+
+    // Process each group
+    for (const [groupName, files] of Object.entries(fileGroups)) {
+      for (const file of files) {
+        const fileSize = file.content.length;
+        
+        if (currentSize + fileSize > sizeLimit && currentBatch.length > 0) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentSize = 0;
+        }
+        
+        currentBatch.push(file);
+        currentSize += fileSize;
       }
-      
-      currentBatch.push(file);
-      currentSize += fileSize;
     }
     
-    // Add the last batch if it has files
     if (currentBatch.length > 0) {
       batches.push(currentBatch);
     }
 
-    console.log(`Created ${batches.length} batches for conversion`);
+    console.log(`Created ${batches.length} intelligent batches for conversion`);
 
-    // Convert batches sequentially with proper error handling
+    // Convert batches with comprehensive error handling
     const converted = [];
-    const errors = [];
+    const failedFiles = [];
+    const batchResults = [];
     
     for (let i = 0; i < batches.length; i++) {
-      console.log(`Converting batch ${i + 1}/${batches.length}`);
+      const batchIndex = i + 1;
+      console.log(`Processing batch ${batchIndex}/${batches.length} (${batches[i].length} files)`);
       
       try {
-        const batchResult = await convertBatch(batches[i], target);
+        const batchResult = await convertBatch(batches[i], target, batchIndex);
         converted.push(...batchResult);
-        console.log(`Successfully converted batch ${i + 1}/${batches.length}`);
-      } catch (conversionError) {
-        console.error(`Error converting batch ${i + 1}:`, conversionError.message);
-        errors.push({
-          batch: i + 1,
-          error: conversionError.message,
-          fileCount: batches[i].length
+        batchResults.push({
+          batch: batchIndex,
+          status: 'success',
+          fileCount: batchResult.length
         });
         
-        // Continue with other batches rather than failing completely
-        continue;
+      } catch (conversionError) {
+        console.error(`Batch ${batchIndex} failed:`, conversionError.message);
+        
+        // Create fallback files to maintain application structure
+        const fallbackFiles = createFallbackFiles(batches[i], target);
+        converted.push(...fallbackFiles);
+        failedFiles.push(...batches[i]);
+        
+        batchResults.push({
+          batch: batchIndex,
+          status: 'fallback',
+          error: conversionError.message,
+          fileCount: fallbackFiles.length
+        });
       }
       
-      // Add delay between batches to avoid rate limiting
+      // Rate limiting delay
       if (i < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
-    if (converted.length === 0) {
-      return res.status(500).json({
-        error: "Conversion failed for all batches",
-        details: errors,
-        message: "No files were successfully converted. Please check the error details and try again."
-      });
-    }
-
-    console.log(`Conversion completed. Successfully processed ${converted.length} files from ${originals.length} originals`);
+    const successfulBatches = batchResults.filter(b => b.status === 'success').length;
+    const fallbackBatches = batchResults.filter(b => b.status === 'fallback').length;
+    
+    console.log(`Conversion completed: ${converted.length} files processed (${successfulBatches} successful batches, ${fallbackBatches} fallback batches)`);
 
     const response = { 
       files: converted,
-      stats: {
-        originalFiles: originals.length,
-        convertedFiles: converted.length,
-        batches: batches.length,
-        successfulBatches: batches.length - errors.length,
+      summary: {
+        totalOriginalFiles: originals.length,
+        totalConvertedFiles: converted.length,
+        successfullyConverted: converted.filter(f => !f.isFallback).length,
+        fallbackFiles: converted.filter(f => f.isFallback).length,
+        batchResults: batchResults,
         target: target
       }
     };
 
-    // Include errors if any occurred but some files were still converted
-    if (errors.length > 0) {
+    // Add warnings for fallback files
+    if (fallbackBatches > 0) {
       response.warnings = {
-        message: `${errors.length} batches failed to convert`,
-        errors: errors
+        message: `${fallbackBatches} batches required fallback conversion`,
+        details: "Some files were converted using fallback method and need manual review",
+        fallbackFiles: converted.filter(f => f.isFallback).map(f => f.originalPath)
       };
     }
 
